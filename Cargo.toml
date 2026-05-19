@@ -2,8 +2,10 @@
 name = "json_sweep"
 version = "0.1.0"
 edition = "2024"
-description = "Expand a sweep of axis assignments into N concrete JSON configs."
+authors = ["Ben Hirsch <benhirsch42@gmail.com>"]
+description = "Fan out a base JSON config into N variants by sweeping values along one or more axes."
 repository = "https://github.com/bhirsch42/json-sweep"
+homepage = "https://github.com/bhirsch42/json-sweep"
 license = "MIT"
 readme = "README.md"
 keywords = ["json", "cli", "sweep", "config", "jq"]

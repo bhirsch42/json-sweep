@@ -1,9 +1,9 @@
 # Using `jswp` with `jq`
 
-`jswp` deliberately does one thing: fan a base config out across axis
-values. Everything else — composing layered configs, single-value edits,
-querying paths, post-processing results — is `jq`'s job. This document
-shows how they fit together.
+`jswp` fans a base config out across axis values. Everything else
+(composing layered configs, single-value edits, querying paths,
+post-processing results) is `jq`'s job. This document shows how they
+fit together.
 
 If you don't have `jq`: <https://jqlang.github.io/jq/>.
 
@@ -17,8 +17,8 @@ If you don't have `jq`: <https://jqlang.github.io/jq/>.
 ```
 
 `jq` upstream prepares **one** base config. `jswp` turns it into **N**.
-`jq` downstream reshapes each of those N (filter fields, extract values,
-re-merge with per-run overlays).
+`jq` downstream reshapes each of those N (filter fields, extract
+values, re-merge with per-run overlays).
 
 ## Upstream: building the base with `jq`
 
@@ -26,7 +26,7 @@ re-merge with per-run overlays).
 
 ```bash
 jq -s '.[0] * .[1]' defaults.json experiment.json \
-  | jswp econ.seed=1..=5 policy=argmax,softmax
+  | jswp training.seed=1..=5 optimizer=adam,sgd
 ```
 
 `jq -s '.[0] * .[1]'` deep-merges two JSONs (slurp mode + multiplication).
@@ -36,112 +36,113 @@ jq -s '.[0] * .[1]' defaults.json experiment.json \
 
 ```bash
 jq -s '.[0] * .[1] * .[2]' defaults.json env.staging.json experiment.json \
-  | jswp econ.seed=1..=5
+  | jswp training.seed=1..=5
 ```
 
 ### Build the base inline
 
 ```bash
-jq -n '{econ: {seed: 0}, knobs: {x: 1.0, policy: "argmax"}}' \
-  | jswp econ.seed=1..=5
+jq -n '{training: {seed: 0}, model: {lr: 0.01, optimizer: "adam"}}' \
+  | jswp training.seed=1..=5
 ```
 
-`jq -n` ("null input") lets you construct JSON from nothing — handy for
+`jq -n` ("null input") lets you construct JSON from nothing. Handy for
 quick experiments without a checked-in base file.
 
 ### Splice in a sub-tree from another file
 
 ```bash
-jq --slurpfile k knobs/aggressive.json '.knobs = $k[0]' base.json \
-  | jswp econ.seed=1..=10
+jq --slurpfile m model_presets/large.json '.model = $m[0]' base.json \
+  | jswp training.seed=1..=10
 ```
 
 ## Downstream: shaping `jswp` output with `jq`
 
-`jswp` emits NDJSON (one JSON value per line). `jq` reads NDJSON natively
-— no `-s` needed unless you want to collect into an array.
+`jswp` emits NDJSON (one JSON value per line). `jq` reads NDJSON
+natively, no `-s` needed unless you want to collect into an array.
 
 ### Pretty-print the stream
 
 ```bash
-jswp base.json econ.seed=1..=3 | jq .
+jswp base.json training.seed=1..=3 | jq .
 ```
 
 ### Extract just the axis values per config
 
 ```bash
-jswp base.json econ.seed=1..=3 knobs.x=0.5,1.0 --with-axes \
+jswp base.json training.seed=1..=3 model.lr=0.01,0.1 --with-axes \
   | jq -c '.axes'
-# {"econ.seed":1,"knobs.x":0.5}
-# {"econ.seed":1,"knobs.x":1.0}
+# {"training.seed":1,"model.lr":0.01}
+# {"training.seed":1,"model.lr":0.1}
 # …
 ```
 
 ### Collect into a single array
 
 ```bash
-jswp base.json econ.seed=1..=3 | jq -s .
+jswp base.json training.seed=1..=3 | jq -s .
 ```
 
 ### Filter to a subset of the sweep
 
 ```bash
-jswp base.json econ.seed=1..=20 --with-axes \
-  | jq -c 'select(.axes."econ.seed" % 2 == 0) | .config'
+jswp base.json training.seed=1..=20 --with-axes \
+  | jq -c 'select(.axes."training.seed" % 2 == 0) | .config'
 ```
 
 ### Reshape an `--out-dir` manifest
 
 ```bash
-jswp base.json econ.seed=1..=10 --out-dir runs/
-jq -s 'group_by(.axes."econ.seed") | map({seed: .[0].axes."econ.seed", paths: map(.path)})' \
+jswp base.json training.seed=1..=10 --out-dir runs/
+jq -s 'group_by(.axes."training.seed")
+       | map({seed: .[0].axes."training.seed", paths: map(.path)})' \
   runs/manifest.ndjson
 ```
 
 ## Per-config edits with `jq` after `jswp`
 
-When you need a tweak that doesn't fit the axis model (e.g., a derived
-value, a conditional override):
+When you need a tweak that doesn't fit the axis model (a derived value,
+a conditional override):
 
 ```bash
-jswp base.json econ.seed=1..=5 \
-  | jq -c '.knobs.derived = (.knobs.x * .econ.seed)'
+jswp base.json training.seed=1..=5 \
+  | jq -c '.model.warmup = (.model.lr * 100)'
 ```
 
 Or branch on axis values when using `--with-axes`:
 
 ```bash
-jswp base.json policy=argmax,softmax --with-axes \
+jswp base.json optimizer=adam,sgd --with-axes \
   | jq -c '
-      .config.knobs.temp = (if .axes.policy == "softmax" then 1.0 else 0 end)
+      .config.model.momentum =
+        (if .axes.optimizer == "sgd" then 0.9 else 0 end)
       | .config
     '
 ```
 
 ## When to reach for `jq` instead of `jswp`
 
-`jswp` is for **cartesian/zipped fan-out across axes**. If you just want
-to set a value or merge two configs, `jq` alone is shorter:
+`jswp` is for cartesian or zipped fan-out across axes. For a single
+edit or a single merge, `jq` alone is shorter:
 
 ```bash
-# Single edit — no need for jswp
-jq '.econ.seed = 42' base.json
+# Single edit
+jq '.training.seed = 42' base.json
 
-# Merge two configs — no need for jswp
+# Merge two configs
 jq -s '.[0] * .[1]' base.json overlay.json
 ```
 
-A sweep with no axes is just `jq` — `jswp` refuses it.
+`jswp` requires at least one axis, so it'll refuse a no-axis call and
+point you here.
 
-## Merging notes — `jswp` vs. `jq`
+## Merging notes: `jswp` vs. `jq`
 
-Both `jswp` and `jq`'s `*` operator do **deep merge of objects, replace
-otherwise**. Arrays replace; they do not concatenate. If you need array
-concat, build the merged base with `jq` first using a custom recipe (see
-below) and pass the result to `jswp`.
+Both `jswp` and `jq`'s `*` operator deep-merge objects and replace
+otherwise. Arrays replace; they do not concatenate. If you need array
+concat, do the merge with `jq` first and pass the result to `jswp`:
 
 ```bash
-# Concat-arrays merge in jq, then sweep
 jq -s '
   def deepmerge(a; b):
     if (a|type) == "object" and (b|type) == "object" then
@@ -151,30 +152,31 @@ jq -s '
     else if b == null then a else b end end;
   deepmerge(.[0]; .[1])
 ' defaults.json overlay.json \
-  | jswp econ.seed=1..=5
+  | jswp training.seed=1..=5
 ```
 
 ## Shell helpers worth keeping around
 
-If you use deep/shallow merges a lot, the companion sourcing script in
-the emergent-economies repo (`scripts/envrc.sh`) defines:
+If you reach for merges often, drop these into your shell rc:
 
-- `jqm a.json b.json …` — deep-merge any number of JSON files (`jq` `*`
-  reduced across slurped inputs).
-- `jqms a.json b.json …` — **shallow** merge (top-level keys only;
-  later files overwrite earlier ones key-by-key, no recursion).
+```bash
+# Deep merge any number of JSON files (jq `*` reduced across inputs).
+jqm()  { jq -s 'reduce .[] as $x ({}; . * $x)' "$@"; }
 
-They're tiny — the script also adds `jswp` to your `PATH`. See the
-script for definitions.
+# Shallow merge (top-level keys only; later files win key-by-key).
+jqms() { jq -s 'reduce .[] as $x ({}; . + $x)' "$@"; }
+```
+
+Then `jqm defaults.json overlay.json | jswp …` reads cleanly.
 
 ## Strict NDJSON
 
-`jswp --pretty` emits indented JSON, which is **not** strict NDJSON
+`jswp --pretty` emits indented JSON, which is *not* strict NDJSON
 (values span multiple lines). If a downstream consumer needs one JSON
 value per line, pipe through `jq -c`:
 
 ```bash
-jswp base.json econ.seed=1..=5 --pretty | jq -c .
+jswp base.json training.seed=1..=5 --pretty | jq -c .
 ```
 
 ## Common pitfalls
@@ -182,11 +184,11 @@ jswp base.json econ.seed=1..=5 --pretty | jq -c .
 - **`-r` strips quotes.** `jq -r` is for getting a string out of a JSON
   string. Don't `-r` something you intend to keep parsing as JSON.
 - **`*` is deep merge; `+` is shallow.** Both with quirks: `*` recurses
-  into objects only (arrays still replace); `+` does object merge at the
-  top level only.
+  into objects only (arrays still replace); `+` does object merge at
+  the top level only.
 - **`select` returns nothing on miss**, not null. `jq -c 'select(...)'`
-  will yield fewer lines than the input — that's the design. If you want
-  the full stream with a per-line marker, do `jq -c '. as $c | {match: (… condition …), config: $c}'`.
-- **`jswp --with-axes` and `jswp --out-dir` are mutually exclusive.** If
-  you want both per-config axes and on-disk files, use `--out-dir` and
-  read `manifest.ndjson` afterwards.
+  yields fewer lines than the input. If you want the full stream with
+  a per-line marker, use
+  `jq -c '. as $c | {match: (… condition …), config: $c}'`.
+- **`--with-axes` and `--out-dir` are mutually exclusive.** If you
+  want both, use `--out-dir` and read `manifest.ndjson` afterwards.
