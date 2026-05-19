@@ -179,11 +179,7 @@ fn malformed_base_json() {
     let dir = TempDir::new().unwrap();
     let base = dir.path().join("base.json");
     fs::write(&base, "{not json").unwrap();
-    jswp()
-        .arg(&base)
-        .arg("a=1,2")
-        .assert()
-        .code(2);
+    jswp().arg(&base).arg("a=1,2").assert().code(2);
 }
 
 #[test]

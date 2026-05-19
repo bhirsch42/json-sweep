@@ -16,11 +16,7 @@ fn ident_continue(c: char) -> bool {
 }
 
 fn ident(input: &str) -> IResult<&str, &str> {
-    recognize(pair(
-        satisfy(ident_start),
-        take_while(ident_continue),
-    ))
-    .parse(input)
+    recognize(pair(satisfy(ident_start), take_while(ident_continue))).parse(input)
 }
 
 /// Parse a dot-separated path of identifiers.
@@ -67,7 +63,10 @@ mod tests {
     fn dotted_path() {
         ok("econ.seed", &["econ", "seed"]);
         ok("a.b.c", &["a", "b", "c"]);
-        ok("knobs.spawn.softmax_temp", &["knobs", "spawn", "softmax_temp"]);
+        ok(
+            "knobs.spawn.softmax_temp",
+            &["knobs", "spawn", "softmax_temp"],
+        );
     }
 
     #[test]

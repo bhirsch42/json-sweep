@@ -116,7 +116,10 @@ mod tests {
     fn object_merges_recursively() {
         let mut base = json!({"a": 1, "b": {"x": 1, "y": 2}});
         merge_into(&mut base, &json!({"b": {"y": 99, "z": 3}, "c": 7}));
-        assert_eq!(base, json!({"a": 1, "b": {"x": 1, "y": 99, "z": 3}, "c": 7}));
+        assert_eq!(
+            base,
+            json!({"a": 1, "b": {"x": 1, "y": 99, "z": 3}, "c": 7})
+        );
     }
 
     #[test]

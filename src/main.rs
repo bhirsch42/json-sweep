@@ -81,8 +81,7 @@ fn main() -> ExitCode {
 }
 
 fn run(args: Args) -> Result<(), AppError> {
-    let stdin_buf =
-        buffered_stdin().map_err(|e| AppError::Io(format!("reading stdin: {e}")))?;
+    let stdin_buf = buffered_stdin().map_err(|e| AppError::Io(format!("reading stdin: {e}")))?;
     let (base_source, axis_args) = partition_positionals(&args.positionals, stdin_buf)?;
     if axis_args.is_empty() {
         return Err(AppError::Usage(
@@ -106,19 +105,19 @@ fn run(args: Args) -> Result<(), AppError> {
     Ok(())
 }
 
+type AxisList<'a> = Vec<(usize, &'a str)>;
+
 fn partition_positionals(
     positionals: &[String],
     stdin_buf: Option<Vec<u8>>,
-) -> Result<(BaseSource, Vec<(usize, &str)>), AppError> {
+) -> Result<(BaseSource, AxisList<'_>), AppError> {
     let mut base: Option<&str> = None;
-    let mut axes: Vec<(usize, &str)> = Vec::new();
+    let mut axes: AxisList = Vec::new();
     for (i, raw) in positionals.iter().enumerate() {
         if raw == "-" || !raw.contains('=') {
-            if base.is_some() {
+            if let Some(existing) = base {
                 return Err(AppError::Usage(format!(
-                    "at most one BASE positional allowed; saw {:?} and {:?}",
-                    base.unwrap(),
-                    raw
+                    "at most one BASE positional allowed; saw {existing:?} and {raw:?}"
                 )));
             }
             base = Some(raw);
@@ -206,9 +205,8 @@ fn sweep_error_to_app(e: SweepError) -> AppError {
             AppError::Usage(format!("axis {axis_path:?} produced zero values"))
         }
         SweepError::NoAxes => AppError::Usage("no axes given".to_string()),
-        SweepError::Apply { axis_path, inner } => AppError::Usage(format!(
-            "axis {axis_path:?}: {inner}"
-        )),
+        SweepError::Apply { axis_path, inner } => {
+            AppError::Usage(format!("axis {axis_path:?}: {inner}"))
+        }
     }
 }
-

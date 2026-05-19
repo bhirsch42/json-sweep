@@ -12,7 +12,11 @@ pub fn buffered_stdin() -> io::Result<Option<Vec<u8>>> {
     }
     let mut buf = Vec::new();
     io::stdin().read_to_end(&mut buf)?;
-    if buf.is_empty() { Ok(None) } else { Ok(Some(buf)) }
+    if buf.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(buf))
+    }
 }
 
 pub fn read_base(source: BaseSource) -> io::Result<Value> {
@@ -39,11 +43,7 @@ pub enum BaseSource {
     File(PathBuf),
 }
 
-pub fn write_ndjson_stdout(
-    items: &[SweepItem],
-    pretty: bool,
-    with_axes: bool,
-) -> io::Result<()> {
+pub fn write_ndjson_stdout(items: &[SweepItem], pretty: bool, with_axes: bool) -> io::Result<()> {
     let stdout = io::stdout();
     let mut out = stdout.lock();
     for item in items {
@@ -64,11 +64,7 @@ pub fn write_ndjson_stdout(
     Ok(())
 }
 
-pub fn write_out_dir(
-    items: &[SweepItem],
-    dir: &Path,
-    pretty: bool,
-) -> io::Result<()> {
+pub fn write_out_dir(items: &[SweepItem], dir: &Path, pretty: bool) -> io::Result<()> {
     std::fs::create_dir_all(dir)?;
     let width = file_width(items.len());
     let manifest_path = dir.join("manifest.ndjson");

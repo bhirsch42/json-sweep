@@ -1,5 +1,7 @@
 # json_sweep
 
+[![CI](https://github.com/bhirsch42/json-sweep/actions/workflows/ci.yml/badge.svg)](https://github.com/bhirsch42/json-sweep/actions/workflows/ci.yml)
+
 Fan out a base JSON config into N variants by sweeping values along one
 or more axes. The binary is `jswp`.
 
@@ -25,12 +27,13 @@ See [`USING_WITH_JQ.md`](USING_WITH_JQ.md) for compositions.
 
 ## Install
 
+From a checkout:
+
 ```bash
-cargo install json_sweep        # from crates.io
-cargo install --path .          # from a checkout
+cargo install --path .
 ```
 
-Both put `jswp` on your `PATH`.
+This puts `jswp` on your `PATH`. (Not yet published to crates.io.)
 
 ## More examples
 
@@ -124,10 +127,6 @@ addition, to avoid drift.
 A bare string starts with `[A-Za-z_/]` and continues with any char that
 isn't `,`. This catches identifiers, kebab-case, and even relative
 paths like `./variant.json`. To force JSON-string parsing, quote it.
-
-Function-call forms like `linspace(0, 1, 5)` aren't supported because
-parens require shell quoting. For evenly-spaced floats, type the list,
-use `a..=b:s` with the right step, or shell out: `$(python -c '...')`.
 
 ## Modes
 

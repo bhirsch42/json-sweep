@@ -148,9 +148,7 @@ fn try_range_form(input: &str) -> Result<Option<Generator>, GenError> {
             }))
         }
         Some(step_raw) => {
-            let step_offset = after_op
-                + rhs.len()
-                + (rest.len() - rhs.len() - step_raw.len());
+            let step_offset = after_op + rhs.len() + (rest.len() - rhs.len() - step_raw.len());
             let step_str = step_raw.trim();
             if step_str.is_empty() {
                 return Err(GenError::at(step_offset, "stepped range missing step"));
@@ -196,10 +194,7 @@ fn find_top_level_dotdot(s: &str) -> Result<Option<usize>, GenError> {
                     return Err(GenError::at(i, "unbalanced closing brace"));
                 }
             }
-            b'.' if depth == 0
-                && i + 1 < bytes.len()
-                && bytes[i + 1] == b'.' =>
-            {
+            b'.' if depth == 0 && i + 1 < bytes.len() && bytes[i + 1] == b'.' => {
                 return Ok(Some(i));
             }
             _ => {}
@@ -314,12 +309,10 @@ fn split_top_level_commas(input: &str) -> Result<Vec<(usize, &str)>, GenError> {
 fn parse_value(s: &str, offset: usize) -> Result<Value, GenError> {
     let first = s.chars().next().expect("non-empty");
     match first {
-        '"' => serde_json::from_str(s).map_err(|e| {
-            GenError::at(offset, format!("invalid JSON string: {e}"))
-        }),
-        '{' | '[' => serde_json::from_str(s).map_err(|e| {
-            GenError::at(offset, format!("invalid JSON literal: {e}"))
-        }),
+        '"' => serde_json::from_str(s)
+            .map_err(|e| GenError::at(offset, format!("invalid JSON string: {e}"))),
+        '{' | '[' => serde_json::from_str(s)
+            .map_err(|e| GenError::at(offset, format!("invalid JSON literal: {e}"))),
         _ if s == "true" => Ok(Value::Bool(true)),
         _ if s == "false" => Ok(Value::Bool(false)),
         _ if s == "null" => Ok(Value::Null),
@@ -336,9 +329,8 @@ fn parse_value(s: &str, offset: usize) -> Result<Value, GenError> {
 }
 
 fn parse_number_value(s: &str, offset: usize) -> Result<Value, GenError> {
-    serde_json::from_str::<Value>(s).map_err(|_| {
-        GenError::at(offset, format!("expected number, found {s:?}"))
-    })
+    serde_json::from_str::<Value>(s)
+        .map_err(|_| GenError::at(offset, format!("expected number, found {s:?}")))
 }
 
 #[cfg(test)]
@@ -425,10 +417,7 @@ mod tests {
 
     #[test]
     fn list_kebab_string() {
-        assert_eq!(
-            expand("kebab-case-thing"),
-            vec![json!("kebab-case-thing")]
-        );
+        assert_eq!(expand("kebab-case-thing"), vec![json!("kebab-case-thing")]);
     }
 
     // ---------- Ranges ----------
