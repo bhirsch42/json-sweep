@@ -26,6 +26,9 @@ pub enum ApplyError {
     },
     /// Filter found zero matching array elements.
     FilterNoMatch { segment: String },
+    /// Key segment didn't already exist in the parent object. Only surfaces
+    /// from `check_segments`; `apply_segments` auto-creates instead.
+    KeyMissing { segment: String },
 }
 
 impl std::fmt::Display for ApplyError {
@@ -62,6 +65,9 @@ impl std::fmt::Display for ApplyError {
             ),
             ApplyError::FilterNoMatch { segment } => {
                 write!(f, "filter {segment:?} matched zero elements")
+            }
+            ApplyError::KeyMissing { segment } => {
+                write!(f, "key {segment:?} not present in base (typo?)")
             }
         }
     }
@@ -115,6 +121,73 @@ pub fn apply_segments(
         cur = step(cur, seg, is_leaf)?;
     }
     merge_into(cur, value);
+    Ok(())
+}
+
+/// Verify that `segs` addresses an existing slot in `base`. Like
+/// `apply_segments` but with zero auto-creation: a key that isn't already
+/// present in the parent object returns `KeyMissing`. Used by the
+/// `--strict-paths` validator to catch typo'd axis paths up front.
+pub fn check_segments(base: &Value, segs: &[Segment]) -> Result<(), ApplyError> {
+    let mut cur = base;
+    for seg in segs {
+        cur = match seg {
+            Segment::Key(k) => {
+                let obj = match cur {
+                    Value::Object(m) => m,
+                    other => {
+                        return Err(ApplyError::TraverseNonObject {
+                            segment: k.clone(),
+                            encountered: kind_name(other),
+                        });
+                    }
+                };
+                obj.get(k)
+                    .ok_or_else(|| ApplyError::KeyMissing { segment: k.clone() })?
+            }
+            Segment::Index(idx) => {
+                let arr = match cur {
+                    Value::Array(a) => a,
+                    other => {
+                        return Err(ApplyError::TraverseNonArray {
+                            segment: format!("[{idx}]"),
+                            encountered: kind_name(other),
+                        });
+                    }
+                };
+                if *idx >= arr.len() {
+                    return Err(ApplyError::IndexOutOfBounds {
+                        segment: format!("[{idx}]"),
+                        index: *idx,
+                        len: arr.len(),
+                    });
+                }
+                &arr[*idx]
+            }
+            Segment::Filter { key, value: needle } => {
+                let label = render_filter(key, needle);
+                let arr = match cur {
+                    Value::Array(a) => a,
+                    other => {
+                        return Err(ApplyError::FilterOnNonArray {
+                            segment: label,
+                            encountered: kind_name(other),
+                        });
+                    }
+                };
+                let pos = arr.iter().position(|elem| {
+                    elem.as_object()
+                        .and_then(|m| m.get(key))
+                        .map(|v| v == needle)
+                        .unwrap_or(false)
+                });
+                match pos {
+                    Some(i) => &arr[i],
+                    None => return Err(ApplyError::FilterNoMatch { segment: label }),
+                }
+            }
+        };
+    }
     Ok(())
 }
 
@@ -353,6 +426,55 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, ApplyError::FilterOnNonArray { .. }));
+    }
+
+    #[test]
+    fn check_segments_ok_when_path_resolves() {
+        let base = json!({"econ": {"seed": 0}, "knobs": {"x": 1}});
+        check_segments(&base, &[key("econ"), key("seed")]).unwrap();
+        check_segments(&base, &[key("knobs"), key("x")]).unwrap();
+    }
+
+    #[test]
+    fn check_segments_errors_on_missing_top_key() {
+        let base = json!({"econ": {"seed": 0}});
+        let err = check_segments(&base, &[key("knobs"), key("x")]).unwrap_err();
+        match err {
+            ApplyError::KeyMissing { segment } => assert_eq!(segment, "knobs"),
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn check_segments_errors_on_missing_leaf_key() {
+        let base = json!({"econ": {"seed": 0}});
+        let err = check_segments(&base, &[key("econ"), key("see")]).unwrap_err();
+        match err {
+            ApplyError::KeyMissing { segment } => assert_eq!(segment, "see"),
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn check_segments_resolves_through_index_and_filter() {
+        let base = json!({"classes": [{"name": "A", "w": 1}, {"name": "T", "w": 2}]});
+        check_segments(&base, &[key("classes"), idx(1), key("w")]).unwrap();
+        check_segments(
+            &base,
+            &[key("classes"), filt("name", json!("T")), key("w")],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn check_segments_propagates_index_and_filter_errors() {
+        let base = json!({"xs": [1, 2]});
+        let err = check_segments(&base, &[key("xs"), idx(5)]).unwrap_err();
+        assert!(matches!(err, ApplyError::IndexOutOfBounds { .. }));
+
+        let base = json!({"xs": [{"name": "A"}]});
+        let err = check_segments(&base, &[key("xs"), filt("name", json!("Z"))]).unwrap_err();
+        assert!(matches!(err, ApplyError::FilterNoMatch { .. }));
     }
 
     #[test]

@@ -83,6 +83,7 @@ jswp [BASE] PATH=GEN [PATH=GEN...] [options]
   --with-axes           wrap stdout NDJSON as {axes, config}
   --pretty              indent emitted JSON
   --max N               refuse if cardinality > N (default 10000)
+  --strict-paths        error if any axis path doesn't resolve in BASE
 ```
 
 Positional args are split by whether they contain `=`:
@@ -133,6 +134,31 @@ If you instead want one axis that writes the same value to multiple
 indices, list them explicitly with separate axes that share GEN
 generation, or preprocess with `jq`.
 
+### Brace-expansion couples paths into one axis
+
+A `.{k1,k2,...}` group writes the same swept value to each named key
+under the parent. It produces **one** axis, not many — the opposite of
+bracket-range semantics.
+
+```bash
+jswp base.json 'treasury.{food,wood,ore,metal,tools}=50,500,5000'
+# one axis with 3 values → 3 variants
+# in each variant, all five treasury.* keys share that value
+```
+
+This is the right tool when several JSON locations are logically the
+same knob. Combine with filters and ranges as needed:
+
+```bash
+jswp base.json 'spec.classes[name=Treasury].ideal.{food,wood}=10,20'
+jswp base.json 'xs[0..=1].{a,b}=1,2'  # 2 independent axes × 2 vals = 4 variants;
+                                       # within each, a and b move together
+```
+
+Group entries must be plain identifiers (no indices, filters, or
+nested brackets). Multiple groups in one path take the cartesian
+product of paths within the same axis.
+
 ## Generator syntax (right of `=`)
 
 Every form is typeable without shell quoting (except when a value
@@ -169,6 +195,21 @@ paths like `./variant.json`. To force JSON-string parsing, quote it.
 - **cartesian** (default): every combination of axis values.
 - **`--zip`**: parallel iteration; all axes must produce the same
   number of values. Cardinality = that length.
+
+### Derived values via `--zip`
+
+`jswp` doesn't compute expressions (no `capacity = ideal * 10`).
+For derived knobs, enumerate the paired values explicitly with
+`--zip`:
+
+```bash
+jswp base.json --zip \
+  'treasury.{food,wood,ore,metal,tools}=50,500,5000' \
+  'treasury.capacity=500,5000,50000'
+```
+
+Three variants, one per column, with `capacity` co-varying with the
+`ideal` block.
 
 ## Merge semantics
 
@@ -218,6 +259,15 @@ needs strict NDJSON.
 ### `--max N` (default 10000)
 
 Refuse before generating if the product exceeds `N`.
+
+### `--strict-paths`
+
+Default behavior is permissive: a `Key` segment that doesn't exist in
+the base is auto-created (see *Merge semantics*), which means a typo
+silently produces variants identical to the base. Pass `--strict-paths`
+to refuse before generating if any axis path doesn't resolve to an
+existing slot in the base. Index, filter, and range segments are
+already strict; this flag only tightens up `Key` segments.
 
 ## Exit codes
 

@@ -4,8 +4,12 @@ use serde_json::{Map, Value};
 
 #[derive(Debug, Clone)]
 pub struct Axis {
-    pub path: Vec<Segment>,
-    pub path_str: String,
+    /// One or more coupled paths sharing the swept value. A vanilla axis
+    /// has a single path; a `.{a,b,c}` key-group axis has one path per
+    /// brace entry.
+    pub paths: Vec<Vec<Segment>>,
+    /// Display label, e.g. `treasury.{food,wood,ore}` or `classes[5].x`.
+    pub label: String,
     pub values: Vec<Value>,
 }
 
@@ -81,7 +85,7 @@ pub fn cardinality(axes: &[Axis], mode: Mode) -> Result<usize, SweepError> {
     for a in axes {
         if a.values.is_empty() {
             return Err(SweepError::EmptyAxis {
-                axis_path: a.path_str.clone(),
+                axis_path: a.label.clone(),
             });
         }
     }
@@ -102,7 +106,7 @@ pub fn cardinality(axes: &[Axis], mode: Mode) -> Result<usize, SweepError> {
                 if a.values.len() != expected {
                     return Err(SweepError::ZipMismatch {
                         axis_index: i,
-                        axis_path: a.path_str.clone(),
+                        axis_path: a.label.clone(),
                         expected,
                         got: a.values.len(),
                     });
@@ -133,11 +137,13 @@ pub fn expand(
         let mut axes_map = Map::new();
         for (axis, &idx) in axes.iter().zip(indices.iter()) {
             let value = &axis.values[idx];
-            apply_segments(&mut config, &axis.path, value).map_err(|e| SweepError::Apply {
-                axis_path: axis.path_str.clone(),
-                inner: e,
-            })?;
-            axes_map.insert(axis.path_str.clone(), value.clone());
+            for path in &axis.paths {
+                apply_segments(&mut config, path, value).map_err(|e| SweepError::Apply {
+                    axis_path: axis.label.clone(),
+                    inner: e,
+                })?;
+            }
+            axes_map.insert(axis.label.clone(), value.clone());
         }
         out.push(SweepItem {
             axes: axes_map,
@@ -169,9 +175,10 @@ mod tests {
     use serde_json::json;
 
     fn axis(path: &str, values: Vec<Value>) -> Axis {
+        let segs: Vec<Segment> = path.split('.').map(|s| Segment::Key(s.to_string())).collect();
         Axis {
-            path: path.split('.').map(|s| Segment::Key(s.to_string())).collect(),
-            path_str: path.to_string(),
+            paths: vec![segs],
+            label: path.to_string(),
             values,
         }
     }
@@ -274,6 +281,33 @@ mod tests {
         assert_eq!(
             items[0].config,
             json!({"econ": {"seed": 1}, "knobs": {"spawn": {"temp": 0.5}}})
+        );
+    }
+
+    #[test]
+    fn coupled_paths_share_one_value() {
+        // Simulate `treasury.{food,wood}=10,20`: one axis, two paths.
+        let axis = Axis {
+            paths: vec![
+                vec![Segment::Key("treasury".into()), Segment::Key("food".into())],
+                vec![Segment::Key("treasury".into()), Segment::Key("wood".into())],
+            ],
+            label: "treasury.{food,wood}".into(),
+            values: vec![json!(10), json!(20)],
+        };
+        let items = expand(&json!({}), &[axis], Mode::Cross, 100).unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(
+            items[0].config,
+            json!({"treasury": {"food": 10, "wood": 10}})
+        );
+        assert_eq!(
+            items[1].config,
+            json!({"treasury": {"food": 20, "wood": 20}})
+        );
+        assert_eq!(
+            items[0].axes.get("treasury.{food,wood}"),
+            Some(&json!(10))
         );
     }
 

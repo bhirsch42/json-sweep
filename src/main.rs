@@ -1,7 +1,8 @@
 use clap::Parser;
 use json_sweep::generator::{GenError, parse_generator};
 use json_sweep::io::{BaseSource, buffered_stdin, read_base, write_ndjson_stdout, write_out_dir};
-use json_sweep::path::{expand_path, parse_path, segments_to_string};
+use json_sweep::merge::check_segments;
+use json_sweep::path::{expand_template, parse_path};
 use json_sweep::sweep::{Axis, Mode, SweepError, expand};
 use serde_json::Value;
 use std::path::PathBuf;
@@ -45,6 +46,11 @@ struct Args {
     /// Refuse to expand if cardinality > N.
     #[arg(long, value_name = "N", default_value_t = 10_000)]
     max: usize,
+
+    /// Refuse to run if any axis path doesn't resolve to an existing slot in
+    /// the base. Catches typos that would otherwise be silently auto-created.
+    #[arg(long)]
+    strict_paths: bool,
 }
 
 #[derive(Debug)]
@@ -92,6 +98,10 @@ fn run(args: Args) -> Result<(), AppError> {
     let axes = parse_axes(&axis_args)?;
     let base = load_base(base_source)?;
     let mode = if args.zip { Mode::Zip } else { Mode::Cross };
+
+    if args.strict_paths {
+        validate_axes_against_base(&base, &axes)?;
+    }
 
     let items = expand(&base, &axes, mode, args.max).map_err(sweep_error_to_app)?;
 
@@ -184,17 +194,16 @@ fn parse_axes(axis_args: &[(usize, &str)]) -> Result<Vec<Axis>, AppError> {
             ))
         })?;
         let values = generator.expand();
-        let concrete_paths = expand_path(&template);
-        if concrete_paths.is_empty() {
+        let expansions = expand_template(&template);
+        if expansions.is_empty() {
             return Err(AppError::Usage(format!(
                 "axis {axis_num} ({raw:?}): path range expanded to zero indices"
             )));
         }
-        for segs in concrete_paths {
-            let rendered = segments_to_string(&segs);
+        for exp in expansions {
             out.push(Axis {
-                path: segs,
-                path_str: rendered,
+                paths: exp.paths,
+                label: exp.label,
                 values: values.clone(),
             });
         }
@@ -230,6 +239,20 @@ fn find_top_level_eq(s: &str) -> Option<usize> {
         }
     }
     None
+}
+
+fn validate_axes_against_base(base: &Value, axes: &[Axis]) -> Result<(), AppError> {
+    for axis in axes {
+        for path in &axis.paths {
+            if let Err(e) = check_segments(base, path) {
+                return Err(AppError::Usage(format!(
+                    "--strict-paths: axis {:?}: {e}",
+                    axis.label
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn sweep_error_to_app(e: SweepError) -> AppError {

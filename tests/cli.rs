@@ -377,6 +377,121 @@ fn filter_no_match_errors() {
 }
 
 #[test]
+fn brace_expansion_couples_multiple_paths_to_one_axis() {
+    let dir = TempDir::new().unwrap();
+    let base = write_base(
+        &dir,
+        &json!({
+            "spec": {
+                "classes": [
+                    {"name": "Eq", "weight": 0.6},
+                    {"name": "Treasury", "ideal": {"food": 0, "wood": 0, "ore": 0}}
+                ]
+            }
+        }),
+    );
+    let out = jswp()
+        .arg(&base)
+        .arg("spec.classes[name=Treasury].ideal.{food,wood,ore}=50,500,5000")
+        .arg("--with-axes")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let lines: Vec<Value> = String::from_utf8(out)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    // One axis, three values, so three variants — NOT three independent axes.
+    assert_eq!(lines.len(), 3);
+    let treasury0 = &lines[0]["config"]["spec"]["classes"][1]["ideal"];
+    assert_eq!(treasury0["food"], json!(50));
+    assert_eq!(treasury0["wood"], json!(50));
+    assert_eq!(treasury0["ore"], json!(50));
+    let treasury2 = &lines[2]["config"]["spec"]["classes"][1]["ideal"];
+    assert_eq!(treasury2["food"], json!(5000));
+    assert_eq!(treasury2["wood"], json!(5000));
+    assert_eq!(treasury2["ore"], json!(5000));
+    // Label preserves brace form so axes_map keys stay legible.
+    assert!(
+        lines[0]["axes"]
+            .as_object()
+            .unwrap()
+            .contains_key("spec.classes[name=Treasury].ideal.{food,wood,ore}"),
+        "axes label: {}",
+        lines[0]["axes"]
+    );
+}
+
+#[test]
+fn brace_expansion_combines_with_range_for_independent_axes() {
+    let dir = TempDir::new().unwrap();
+    let base = write_base(
+        &dir,
+        &json!({"xs": [{"a": 0, "b": 0}, {"a": 0, "b": 0}]}),
+    );
+    let out = jswp()
+        .arg(&base)
+        .arg("xs[0..=1].{a,b}=1,2") // 2 indep axes (range) × 2 values = 4 variants
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let text = String::from_utf8(out).unwrap();
+    assert_eq!(text.lines().count(), 4);
+    let first: Value = serde_json::from_str(text.lines().next().unwrap()).unwrap();
+    // Both a and b on xs[0] should be set together within an axis-slot.
+    assert_eq!(first["xs"][0]["a"], first["xs"][0]["b"]);
+}
+
+#[test]
+fn strict_paths_rejects_typo() {
+    let dir = TempDir::new().unwrap();
+    let base = write_base(&dir, &json!({"econ": {"seed": 0}}));
+    jswp()
+        .arg(&base)
+        .arg("econ.see=1,2") // typo of "seed"
+        .arg("--strict-paths")
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("strict-paths"))
+        .stderr(predicate::str::contains("\"econ.see\""))
+        .stderr(predicate::str::contains("\"see\""));
+}
+
+#[test]
+fn strict_paths_accepts_resolving_paths() {
+    let dir = TempDir::new().unwrap();
+    let base = write_base(
+        &dir,
+        &json!({"econ": {"seed": 0}, "knobs": {"x": 0}}),
+    );
+    jswp()
+        .arg(&base)
+        .arg("econ.seed=1,2")
+        .arg("knobs.x=10,20")
+        .arg("--strict-paths")
+        .assert()
+        .success();
+}
+
+#[test]
+fn lax_default_allows_new_paths() {
+    // Same input as strict_paths_rejects_typo but without the flag — current
+    // auto-create semantics must keep working.
+    let dir = TempDir::new().unwrap();
+    let base = write_base(&dir, &json!({"econ": {"seed": 0}}));
+    jswp()
+        .arg(&base)
+        .arg("econ.see=1,2")
+        .assert()
+        .success();
+}
+
+#[test]
 fn stepped_range_smoke() {
     let dir = TempDir::new().unwrap();
     let base = write_base(&dir, &json!({}));

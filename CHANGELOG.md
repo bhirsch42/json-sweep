@@ -17,14 +17,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
     axes sharing one GEN (cartesian if multiple ranges appear).
 - Path heads may now be bracket forms (`[3].name`) for array-rooted
   bases.
+- `--strict-paths` flag: refuse to run if any axis path doesn't resolve
+  to an existing slot in the base, catching typos that the default
+  auto-create semantics would otherwise mask.
+- `merge::check_segments(base, segs)` validates a concrete path
+  against a base without mutating; backs `--strict-paths`.
+- Path syntax supports key-group brace expansion:
+  `treasury.{food,wood,ore}=50,500,5000` fans the same swept value to
+  every listed key as a single coupled axis (contrast with
+  bracket-range syntax `xs[0..=2]`, which produces independent axes).
+- `Axis` carries `Vec<Vec<Segment>> paths` and a `label` instead of a
+  single `path`/`path_str`, to represent coupled paths in one axis.
+- `path::expand_template` replaces `expand_path` and returns
+  `Vec<AxisExpansion>`, distinguishing axis-fanout from path-fanout
+  within an axis.
 
 ### Changed
 
 - `ApplyError` is now an enum (`TraverseNonObject`, `TraverseNonArray`,
-  `IndexOutOfBounds`, `FilterOnNonArray`, `FilterNoMatch`) for clearer
-  failure messages.
+  `IndexOutOfBounds`, `FilterOnNonArray`, `FilterNoMatch`,
+  `KeyMissing`) for clearer failure messages.
 - The internal `apply_axis` helper is renamed to `apply_segments` and
   takes `&[Segment]`.
+- Path parser uses an internal `Cursor` helper rather than manual
+  byte indexing; behavior unchanged.
 
 ### Removed
 

@@ -4,6 +4,19 @@ This roadmap captures planned improvements to `jswp`, prioritized from real-worl
 usage feedback. The motivating use case and suggested order of attack are
 preserved below.
 
+## Status
+
+| #   | Item                                  | Status                                |
+| --- | ------------------------------------- | ------------------------------------- |
+| 0   | `Cursor` helper in `path.rs`          | DONE                                  |
+| 1   | Array indexing                        | DONE (commit bd51a68)                 |
+| 2   | Filter-by-field                       | DONE (commit bd51a68)                 |
+| 3   | Coupled paths from one axis           | DONE (brace expansion)                |
+| 4   | Derived values                        | MOOTED by 3 + `--zip` (README example) |
+| 5   | Validate axis paths resolve           | DONE (opt-in `--strict-paths`)        |
+| P   | `--with-axes` embed / sidecar         | DONE (stdout wrap + `--out-dir` manifest) |
+| P   | Manifest to stdout when no `--out-dir`| DONE-equivalent via `--with-axes`     |
+
 ## Motivating use case
 
 Sweeping Treasury params in `backend/scenarios/money-source.json`. Treasury is
@@ -27,6 +40,20 @@ dropped `jswp` entirely.
   composition model.
 
 ## Priorities
+
+### 0. Internal: `Cursor` helper in `path.rs`
+
+Extract a small `Cursor<&str>` (peek / bump / eat_while / at_eof) to replace the
+manual `self.pos += 1` + `bytes[i]` indexing throughout the path parser. Keep
+the precise column-offset errors (`PathError::at`) and the existing
+lookahead-friendly structure — the string-aware `find_close_bracket` /
+`find_top_level_eq` scans and the `..` vs `..=` disambiguation don't change
+shape, they just read more cleanly. Not a rewrite, and explicitly *not* a port
+to a parser-combinator crate (`nom` was considered and rejected: it would
+regress error quality and fits the lookahead bits awkwardly).
+
+Worth doing before priorities 1–3 below, since each of those extends the path
+grammar and will be easier on top of a tidier scanner.
 
 ### 1. Array indexing — blocker
 
