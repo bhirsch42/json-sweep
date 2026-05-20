@@ -60,6 +60,13 @@ jswp base.json --zip \
 jswp base.json \
   'augment={"flip":true},{"flip":true,"crop":32}'
 
+# Sweep a value buried inside an array, addressed by sibling key
+jswp portfolio.json \
+  'spec.classes[name=Treasury].ideal.equity_target=0..=0.5:0.1'
+
+# Sweep every weight in a known-length array independently
+jswp portfolio.json 'weights[0..=5]=0.1,0.2,0.3'
+
 # Pipe through jq upstream, GNU parallel downstream
 jq -s '.[0] * .[1]' defaults.json experiment.json \
   | jswp training.seed=1..=5 optimizer=adam,sgd --out-dir runs/ \
@@ -92,10 +99,39 @@ At least one axis is required.
 
 ## Path syntax (left of `=`)
 
-Dot-separated path into nested JSON objects: `training.seed`,
-`model.optimizer.momentum`. Object keys only. Array indexing and keys
-containing literal `.` are out of scope; preprocess with `jq` if you
-need them.
+Dot-separated path into nested JSON: `training.seed`,
+`model.optimizer.momentum`. Keys containing literal `.` are out of scope;
+preprocess with `jq` if you need them.
+
+Array elements can be addressed three ways:
+
+| Form                   | Meaning                                                                |
+| ---------------------- | ---------------------------------------------------------------------- |
+| `classes[5]`           | element at index 5 (0-based). Out-of-bounds is an error.               |
+| `classes[name=Treasury]` | first element where `obj.name == "Treasury"`. Zero matches is an error. |
+| `classes[0..=5]`       | range — the path itself expands to one axis per index (see below).     |
+
+Brackets can chain (`a[0][1]`) and can appear at the start of a path
+(`[3].name`) when the base is an array. Filter values can be numbers
+(`[id=42]`), bare strings (`[name=Treasury]`, `[id=t-1]`), quoted JSON
+strings (`[name="with space"]`), `true`/`false`, or `null`. The filter
+matches by serde_json value equality on the chosen object key.
+
+### Bracket ranges expand the path itself
+
+A range inside brackets (`a..b` or `a..=b`) makes the path *generative*:
+each index becomes its own independent axis, sharing the same GEN.
+Multiple ranges in one path take the cartesian product.
+
+```bash
+jswp base.json 'xs[0..=2]=1,2'
+# expands to 3 axes (xs[0], xs[1], xs[2]), each with values {1,2}
+# → 2^3 = 8 variants
+```
+
+If you instead want one axis that writes the same value to multiple
+indices, list them explicitly with separate axes that share GEN
+generation, or preprocess with `jq`.
 
 ## Generator syntax (right of `=`)
 
@@ -187,8 +223,9 @@ Refuse before generating if the product exceeds `N`.
 
 - `0` — success.
 - `1` — user error: malformed `PATH=GEN`, sweep cardinality > `--max`,
-  zip with mismatched axis lengths, no axes given, path traverses a
-  non-object in the base.
+  zip with mismatched axis lengths, no axes given, path traverses an
+  incompatible value in the base (e.g., array index out of bounds, key
+  on a non-object, filter on a non-array, filter with zero matches).
 - `2` — input error: malformed JSON in the base, IO failure.
 
 ## Contributing

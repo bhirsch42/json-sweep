@@ -242,7 +242,7 @@ fn bad_path_error_includes_axis_number() {
         .assert()
         .code(1)
         .stderr(predicate::str::contains("axis 1"))
-        .stderr(predicate::str::contains("invalid PATH"));
+        .stderr(predicate::str::contains("path must start with a key"));
 }
 
 #[test]
@@ -254,7 +254,7 @@ fn path_traverses_non_object_error() {
         .arg("a.b=1,2")
         .assert()
         .code(1)
-        .stderr(predicate::str::contains("\"a\""))
+        .stderr(predicate::str::contains("\"a.b\""))
         .stderr(predicate::str::contains("number"));
 }
 
@@ -271,6 +271,109 @@ fn two_base_positionals_error() {
         .assert()
         .code(1)
         .stderr(predicate::str::contains("BASE"));
+}
+
+#[test]
+fn array_index_writes_specific_element() {
+    let dir = TempDir::new().unwrap();
+    let base = write_base(&dir, &json!({"xs": [10, 20, 30]}));
+    let out = jswp()
+        .arg(&base)
+        .arg("xs[1]=99,100")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let lines: Vec<Value> = String::from_utf8(out)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[0], json!({"xs": [10, 99, 30]}));
+    assert_eq!(lines[1], json!({"xs": [10, 100, 30]}));
+}
+
+#[test]
+fn filter_addresses_array_element_by_key() {
+    let dir = TempDir::new().unwrap();
+    let base = write_base(
+        &dir,
+        &json!({
+            "classes": [
+                {"name": "Equity", "weight": 0.6},
+                {"name": "Treasury", "ideal": {"equity": 0.5}}
+            ]
+        }),
+    );
+    let out = jswp()
+        .arg(&base)
+        .arg("classes[name=Treasury].ideal.equity=0.1,0.9")
+        .arg("--with-axes")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let lines: Vec<Value> = String::from_utf8(out)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(lines.len(), 2);
+    assert_eq!(
+        lines[0]["axes"]["classes[name=Treasury].ideal.equity"],
+        json!(0.1)
+    );
+    assert_eq!(
+        lines[0]["config"]["classes"][1]["ideal"]["equity"],
+        json!(0.1)
+    );
+    // Other class untouched.
+    assert_eq!(lines[0]["config"]["classes"][0]["weight"], json!(0.6));
+}
+
+#[test]
+fn bracket_range_expands_to_independent_axes() {
+    let dir = TempDir::new().unwrap();
+    let base = write_base(&dir, &json!({"xs": [0, 0, 0]}));
+    let out = jswp()
+        .arg(&base)
+        .arg("xs[0..=2]=1,2")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let lines: Vec<&str> = std::str::from_utf8(&out).unwrap().lines().collect();
+    // 3 axes × 2 values = 8 variants.
+    assert_eq!(lines.len(), 8);
+}
+
+#[test]
+fn array_index_out_of_bounds_errors() {
+    let dir = TempDir::new().unwrap();
+    let base = write_base(&dir, &json!({"xs": [1, 2, 3]}));
+    jswp()
+        .arg(&base)
+        .arg("xs[5]=9")
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("out of bounds"))
+        .stderr(predicate::str::contains("array length 3"));
+}
+
+#[test]
+fn filter_no_match_errors() {
+    let dir = TempDir::new().unwrap();
+    let base = write_base(&dir, &json!({"classes": [{"name": "A"}]}));
+    jswp()
+        .arg(&base)
+        .arg("classes[name=Missing].x=1")
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("matched zero elements"));
 }
 
 #[test]

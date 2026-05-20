@@ -6,6 +6,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Path syntax supports array element addressing:
+  - `classes[5]` — numeric index.
+  - `classes[name=Treasury]` — match the first array element by a
+    sibling key (numbers, bare/quoted strings, bools, and null are
+    valid filter values).
+  - `classes[0..=5]` — range expands the path itself into N independent
+    axes sharing one GEN (cartesian if multiple ranges appear).
+- Path heads may now be bracket forms (`[3].name`) for array-rooted
+  bases.
+
+### Changed
+
+- `ApplyError` is now an enum (`TraverseNonObject`, `TraverseNonArray`,
+  `IndexOutOfBounds`, `FilterOnNonArray`, `FilterNoMatch`) for clearer
+  failure messages.
+- The internal `apply_axis` helper is renamed to `apply_segments` and
+  takes `&[Segment]`.
+
+### Removed
+
+- `nom` and `anyhow` dependencies; the path parser is now hand-rolled
+  to produce offset-precise error messages, and nothing else used
+  either crate.
+
 ## [0.1.0] - 2026-05-19
 
 Initial release.

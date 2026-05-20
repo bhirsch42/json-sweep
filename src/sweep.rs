@@ -1,9 +1,10 @@
-use crate::merge::{ApplyError, apply_axis};
+use crate::merge::{ApplyError, apply_segments};
+use crate::path::Segment;
 use serde_json::{Map, Value};
 
 #[derive(Debug, Clone)]
 pub struct Axis {
-    pub path: Vec<String>,
+    pub path: Vec<Segment>,
     pub path_str: String,
     pub values: Vec<Value>,
 }
@@ -132,7 +133,7 @@ pub fn expand(
         let mut axes_map = Map::new();
         for (axis, &idx) in axes.iter().zip(indices.iter()) {
             let value = &axis.values[idx];
-            apply_axis(&mut config, &axis.path, value).map_err(|e| SweepError::Apply {
+            apply_segments(&mut config, &axis.path, value).map_err(|e| SweepError::Apply {
                 axis_path: axis.path_str.clone(),
                 inner: e,
             })?;
@@ -169,7 +170,7 @@ mod tests {
 
     fn axis(path: &str, values: Vec<Value>) -> Axis {
         Axis {
-            path: path.split('.').map(String::from).collect(),
+            path: path.split('.').map(|s| Segment::Key(s.to_string())).collect(),
             path_str: path.to_string(),
             values,
         }

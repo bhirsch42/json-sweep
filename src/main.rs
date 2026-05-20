@@ -1,7 +1,7 @@
 use clap::Parser;
 use json_sweep::generator::{GenError, parse_generator};
 use json_sweep::io::{BaseSource, buffered_stdin, read_base, write_ndjson_stdout, write_out_dir};
-use json_sweep::path::parse_path;
+use json_sweep::path::{expand_path, parse_path, segments_to_string};
 use json_sweep::sweep::{Axis, Mode, SweepError, expand};
 use serde_json::Value;
 use std::path::PathBuf;
@@ -161,13 +161,19 @@ fn parse_axes(axis_args: &[(usize, &str)]) -> Result<Vec<Axis>, AppError> {
     let mut out = Vec::with_capacity(axis_args.len());
     for (idx, (_slot, raw)) in axis_args.iter().enumerate() {
         let axis_num = idx + 1;
-        let eq = raw.find('=').expect("partition guarantees =");
+        let eq = find_top_level_eq(raw).ok_or_else(|| {
+            AppError::Usage(format!(
+                "axis {axis_num} ({raw:?}): expected PATH=GEN, no top-level '=' found"
+            ))
+        })?;
         let path_str = &raw[..eq];
         let gen_str = &raw[eq + 1..];
 
-        let (_, segs) = parse_path(path_str).map_err(|_| {
+        let template = parse_path(path_str).map_err(|e| {
+            let abs_col = 1 + e.offset;
             AppError::Usage(format!(
-                "axis {axis_num} ({raw:?}), col 1: invalid PATH {path_str:?}"
+                "axis {axis_num} ({raw:?}), col {abs_col}: {}",
+                e.message
             ))
         })?;
         let generator = parse_generator(gen_str).map_err(|e: GenError| {
@@ -178,13 +184,52 @@ fn parse_axes(axis_args: &[(usize, &str)]) -> Result<Vec<Axis>, AppError> {
             ))
         })?;
         let values = generator.expand();
-        out.push(Axis {
-            path: segs,
-            path_str: path_str.to_string(),
-            values,
-        });
+        let concrete_paths = expand_path(&template);
+        if concrete_paths.is_empty() {
+            return Err(AppError::Usage(format!(
+                "axis {axis_num} ({raw:?}): path range expanded to zero indices"
+            )));
+        }
+        for segs in concrete_paths {
+            let rendered = segments_to_string(&segs);
+            out.push(Axis {
+                path: segs,
+                path_str: rendered,
+                values: values.clone(),
+            });
+        }
     }
     Ok(out)
+}
+
+/// Find the first `=` outside of `[...]` brackets and `"..."` strings.
+/// This is the GEN separator; `=` inside a filter like `[name=X]` doesn't
+/// count.
+fn find_top_level_eq(s: &str) -> Option<usize> {
+    let bytes = s.as_bytes();
+    let mut depth: i32 = 0;
+    let mut in_str = false;
+    let mut esc = false;
+    for (i, &b) in bytes.iter().enumerate() {
+        if in_str {
+            if esc {
+                esc = false;
+            } else if b == b'\\' {
+                esc = true;
+            } else if b == b'"' {
+                in_str = false;
+            }
+            continue;
+        }
+        match b {
+            b'"' => in_str = true,
+            b'[' => depth += 1,
+            b']' => depth -= 1,
+            b'=' if depth <= 0 => return Some(i),
+            _ => {}
+        }
+    }
+    None
 }
 
 fn sweep_error_to_app(e: SweepError) -> AppError {
