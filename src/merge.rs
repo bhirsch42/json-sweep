@@ -97,11 +97,7 @@ pub fn merge_into(base: &mut Value, overlay: &Value) {
 /// `Key` segments, and deep-merge `value` into the leaf slot. `Index` and
 /// `Filter` segments do not auto-create — they error if the slot isn't an
 /// array of the right shape.
-pub fn apply_segments(
-    base: &mut Value,
-    segs: &[Segment],
-    value: &Value,
-) -> Result<(), ApplyError> {
+pub fn apply_segments(base: &mut Value, segs: &[Segment], value: &Value) -> Result<(), ApplyError> {
     if segs.is_empty() {
         merge_into(base, value);
         return Ok(());
@@ -459,11 +455,7 @@ mod tests {
     fn check_segments_resolves_through_index_and_filter() {
         let base = json!({"classes": [{"name": "A", "w": 1}, {"name": "T", "w": 2}]});
         check_segments(&base, &[key("classes"), idx(1), key("w")]).unwrap();
-        check_segments(
-            &base,
-            &[key("classes"), filt("name", json!("T")), key("w")],
-        )
-        .unwrap();
+        check_segments(&base, &[key("classes"), filt("name", json!("T")), key("w")]).unwrap();
     }
 
     #[test]

@@ -428,10 +428,7 @@ fn brace_expansion_couples_multiple_paths_to_one_axis() {
 #[test]
 fn brace_expansion_combines_with_range_for_independent_axes() {
     let dir = TempDir::new().unwrap();
-    let base = write_base(
-        &dir,
-        &json!({"xs": [{"a": 0, "b": 0}, {"a": 0, "b": 0}]}),
-    );
+    let base = write_base(&dir, &json!({"xs": [{"a": 0, "b": 0}, {"a": 0, "b": 0}]}));
     let out = jswp()
         .arg(&base)
         .arg("xs[0..=1].{a,b}=1,2") // 2 indep axes (range) × 2 values = 4 variants
@@ -465,10 +462,7 @@ fn strict_paths_rejects_typo() {
 #[test]
 fn strict_paths_accepts_resolving_paths() {
     let dir = TempDir::new().unwrap();
-    let base = write_base(
-        &dir,
-        &json!({"econ": {"seed": 0}, "knobs": {"x": 0}}),
-    );
+    let base = write_base(&dir, &json!({"econ": {"seed": 0}, "knobs": {"x": 0}}));
     jswp()
         .arg(&base)
         .arg("econ.seed=1,2")
@@ -484,11 +478,7 @@ fn lax_default_allows_new_paths() {
     // auto-create semantics must keep working.
     let dir = TempDir::new().unwrap();
     let base = write_base(&dir, &json!({"econ": {"seed": 0}}));
-    jswp()
-        .arg(&base)
-        .arg("econ.see=1,2")
-        .assert()
-        .success();
+    jswp().arg(&base).arg("econ.see=1,2").assert().success();
 }
 
 #[test]

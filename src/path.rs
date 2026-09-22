@@ -429,9 +429,7 @@ fn find_top_level_eq(s: &str) -> Option<usize> {
 }
 
 fn find_dotdot(s: &str) -> Option<usize> {
-    s.as_bytes()
-        .windows(2)
-        .position(|w| w == b"..")
+    s.as_bytes().windows(2).position(|w| w == b"..")
 }
 
 fn parse_int(s: &str, offset: usize) -> Result<i64, PathError> {
@@ -461,7 +459,10 @@ fn parse_filter_value(s: &str, offset: usize) -> Result<Value, PathError> {
         {
             return Ok(v);
         }
-        return Err(PathError::at(offset, format!("expected number, found {s:?}")));
+        return Err(PathError::at(
+            offset,
+            format!("expected number, found {s:?}"),
+        ));
     }
     // Bare string: any chars that aren't whitespace, '[', ']', or '='. The
     // outer scanner already stripped surrounding whitespace.
@@ -487,11 +488,7 @@ pub fn expand_template(template: &[SegmentTemplate]) -> Vec<AxisExpansion> {
     for (pos, tmpl) in template.iter().enumerate() {
         match tmpl {
             SegmentTemplate::Key(k) => {
-                let part = if pos == 0 {
-                    k.clone()
-                } else {
-                    format!(".{k}")
-                };
+                let part = if pos == 0 { k.clone() } else { format!(".{k}") };
                 for axis in &mut out {
                     axis.label.push_str(&part);
                     for path in &mut axis.paths {

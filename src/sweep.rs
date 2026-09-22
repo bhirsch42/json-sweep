@@ -175,7 +175,10 @@ mod tests {
     use serde_json::json;
 
     fn axis(path: &str, values: Vec<Value>) -> Axis {
-        let segs: Vec<Segment> = path.split('.').map(|s| Segment::Key(s.to_string())).collect();
+        let segs: Vec<Segment> = path
+            .split('.')
+            .map(|s| Segment::Key(s.to_string()))
+            .collect();
         Axis {
             paths: vec![segs],
             label: path.to_string(),
@@ -305,10 +308,7 @@ mod tests {
             items[1].config,
             json!({"treasury": {"food": 20, "wood": 20}})
         );
-        assert_eq!(
-            items[0].axes.get("treasury.{food,wood}"),
-            Some(&json!(10))
-        );
+        assert_eq!(items[0].axes.get("treasury.{food,wood}"), Some(&json!(10)));
     }
 
     #[test]
